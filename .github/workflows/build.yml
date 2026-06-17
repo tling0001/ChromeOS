@@ -2,6 +2,12 @@ name: Build ChromeOS
 
 on:
   workflow_dispatch:
+    inputs:
+      codename:
+        type: choice
+        description: ChromeOS device codename (still used by brunch logic)
+        required: true
+        options: [voxel, gumboz, jinlon, shyvana, leona, samus]
 
 jobs:
   build:
@@ -22,32 +28,22 @@ jobs:
           retain_days: 7
           keep_minimum_runs: 6
 
-      - name: Download ChromeOS image
+      - name: Install dependencies
         run: |
-          set -e
+          sudo apt-get update
+          sudo apt-get install -y wget unzip tar pv cgpt
 
-          URL="https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16640.61.0_volteer_recovery_stable-channel_VolteerMPKeys-v14.bin.zip"
+      - name: Build ChromeOS
+        run: |
+          chmod +x build.sh
 
-          echo "Downloading ChromeOS image..."
-          wget --tries=3 --timeout=30 -O chromeos.zip "$URL"
+          # ✅ Inject fixed recovery URL
+          export RECOVERY_URL="https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16640.61.0_volteer_recovery_stable-channel_VolteerMPKeys-v14.bin.zip"
 
-          echo "Extracting image..."
-          unzip chromeos.zip
-
-          IMG=$(ls *.bin | head -n 1)
-
-          if [ -z "$IMG" ]; then
-            echo "::error::No .bin file found after extraction"
-            exit 1
-          fi
-
-          mkdir -p chromeos
-          mv "$IMG" chromeos/chromeos.img
-
-          echo "✅ Image ready"
+          ./build.sh ${{ inputs.codename }}
 
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:
-          name: chromeos-volteer
+          name: chromeos-${{ inputs.codename }}
           path: chromeos/chromeos.img
