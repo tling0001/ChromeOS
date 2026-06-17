@@ -7,9 +7,12 @@ else
     with_sudo=""
 fi
 
+# ✅ Hardcoded ChromeOS recovery image
+RECOVERY_URL="${RECOVERY_URL:-https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16640.61.0_volteer_recovery_stable-channel_VolteerMPKeys-v14.bin.zip}"
+
 # Function to install required dependencies
 install_dependencies() {
-    ${with_sudo}apt update && ${with_sudo}apt -y install pv cgpt tar unzip aria2
+    ${with_sudo}apt-get update && ${with_sudo}apt-get -y install pv cgpt tar unzip aria2 curl
 }
 
 # clean folder brunch and chromeos if they exist
@@ -19,39 +22,39 @@ clean_previous_run() {
     echo "Cleaned previous run"
 }
 
-# Function to download Chrome OS
+# ✅ UPDATED: download ChromeOS (no scraping, uses fixed URL)
 download_chromeos() {
-    local code_name=$1
-    local url="https://cros.tech/device/${code_name}"
-    local response=$(curl -s --progress-bar "$url")
-    local link=$(echo "$response" | sed -n 's/.*<a[^>]*href="\([^"]*dl\.google\.com[^"]*\.zip\)"[^>]*>\([^<]*\)<\/a>.*/\1 \2/p' | awk '
-    {
-        if (match($2, /[0-9]+/)) {
-            num = substr($2, RSTART, RLENGTH)
-            if (num > max_num) {
-                max_num = num
-                max_link = $1
-            }
-        }
-    }
-    END { if (max_num != "") print max_link; else print "No valid links found"; }')
+    echo "Using fixed recovery image:"
+    echo "$RECOVERY_URL"
 
-    if [ "$link" == "No valid links found" ]; then
-        echo "No valid links found"
+    echo "Downloading ChromeOS..."
+    aria2c --console-log-level=warn --summary-interval=1 -x 16 -o chromeos.zip "$RECOVERY_URL"
+
+    if [ ! -f chromeos.zip ]; then
+        echo "::error::Download failed"
         exit 1
     fi
 
-    echo "Downloading Chrome OS for $code_name"
-    aria2c --console-log-level=warn --summary-interval=1 -x 16 -o chromeos.zip "$link"
+    echo "Extracting ChromeOS..."
     unzip -o chromeos.zip -d chromeos
     rm -f chromeos.zip
+
+    # Ensure a .bin exists
+    BIN_FILE=$(find chromeos -name "*.bin" | head -n 1)
+
+    if [ -z "$BIN_FILE" ]; then
+        echo "::error::No .bin file found after extraction"
+        exit 1
+    fi
+
+    echo "✅ ChromeOS downloaded successfully"
 }
 
 # Function to download the latest Brunch release
 download_brunch() {
     local url="https://api.github.com/repos/sebanc/brunch/releases/latest"
     local response=$(curl -s "$url")
-    local link=$(echo "$response" | sed -n 's/.*"browser_download_url": "\([^"]*\.tar\.gz\)".*/\1/p')
+    local link=$(echo "$response" | grep browser_download_url | grep ".tar.gz" | cut -d '"' -f 4 | head -n 1)
 
     if [ -z "$link" ]; then
         if [ "$D_BRUNCH_COUNT" -ge 2 ]; then
@@ -69,8 +72,9 @@ download_brunch() {
 
     echo "Downloading Brunch"
     aria2c --console-log-level=warn --summary-interval=1 -x 16 -o brunch.tar.gz "$link"
+
     mkdir -p brunch
-    tar -xzvf brunch.tar.gz -C brunch
+    tar -xzf brunch.tar.gz -C brunch
     rm -f brunch.tar.gz
 }
 
@@ -89,7 +93,16 @@ post_download_setup() {
     # Copy all files from brunch to chromeos
     echo "Copying Brunch files to Chrome OS..."
     cp -r brunch/* chromeos/
-    mv chromeos/chromeos*.bin chromeos/chromeos.bin
+
+    # Normalize bin filename
+    BIN_FILE=$(find chromeos -name "*.bin" | head -n 1)
+
+    if [ -z "$BIN_FILE" ]; then
+        echo "chromeos .bin not found"
+        exit 1
+    fi
+
+    mv "$BIN_FILE" chromeos/chromeos.bin
 }
 
 # Function to build the final Chrome OS image
@@ -99,41 +112,48 @@ build_chromos_img() {
         exit 1
     }
 
-    # Check if chromeos.bin exists
     [ ! -f chromeos.bin ] && {
         echo "chromeos.bin not found"
         exit 1
     }
-    # Check if chromeos-install.sh exists
+
     [ ! -f chromeos-install.sh ] && {
         echo "chromeos-install.sh not found"
         exit 1
     }
 
-    # Remove existing chromeos.img if it exists
     [ -f chromeos.img ] && rm -f chromeos.img
 
-    # Determine the image filename
     CHROMEOS_IMG_FILENAME=${CHROMEOS_IMG_FILENAME:-"chromeos.img"}
-    [[ "$CHROMEOS_IMG_FILENAME" == *".img" ]] || {
-        echo "CHROMEOS_IMG_FILENAME should contain .img"
+
+    [[ "$CHROMEOS_IMG_FILENAME" != *.img ]] && {
+        echo "CHROMEOS_IMG_FILENAME must end with .img"
         exit 1
     }
 
     ${with_sudo}bash chromeos-install.sh -src chromeos.bin -dst "$CHROMEOS_IMG_FILENAME"
 
-    [ -f "$CHROMEOS_IMG_FILENAME" ] && echo "$CHROMEOS_IMG_FILENAME created successfully" || echo "Failed to create $CHROMEOS_IMG_FILENAME"
-}
-
-# Main script execution
-install_dependencies
-if [ $? -eq 0 ]; then
-    if [ -z "$1" ]; then
-        echo "Please provide Chrome OS code name"
+    if [ -f "$CHROMEOS_IMG_FILENAME" ]; then
+        echo "✅ $CHROMEOS_IMG_FILENAME created successfully"
+    else
+        echo "❌ Failed to create $CHROMEOS_IMG_FILENAME"
         exit 1
     fi
-    clean_previous_run && download_chromeos "$1" && download_brunch && post_download_setup && build_chromos_img
-else
+}
+
+# Main execution
+install_dependencies || {
     echo "Failed to install dependencies"
     exit 1
+}
+
+if [ -z "$1" ]; then
+    echo "No codename provided (still required for compatibility)"
 fi
+
+clean_previous_run \
+&& download_chromeos \
+&& download_brunch \
+&& post_download_setup \
+&& build_chromos_img
+``
