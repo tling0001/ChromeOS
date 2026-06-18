@@ -7,12 +7,12 @@ else
     with_sudo=""
 fi
 
-# ✅ Hardcoded ChromeOS recovery image
+# ✅ Hardcoded ChromeOS recovery image (Rammus Master Platform)
 RECOVERY_URL="${RECOVERY_URL:-https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16640.61.0_rammus_recovery_stable-channel_RammusMPKeys-v9.bin.zip}"
 
-# Function to install required dependencies
+# Function to install required dependencies (Added kpartx here)
 install_dependencies() {
-    ${with_sudo}apt-get update && ${with_sudo}apt-get -y install pv cgpt tar unzip aria2 curl
+    ${with_sudo}apt-get update && ${with_sudo}apt-get -y install pv cgpt tar unzip aria2 curl kpartx
 }
 
 # clean folder brunch and chromeos if they exist
@@ -22,7 +22,7 @@ clean_previous_run() {
     echo "Cleaned previous run"
 }
 
-# ✅ UPDATED: download ChromeOS (no scraping, uses fixed URL)
+# download ChromeOS (no scraping, uses fixed URL)
 download_chromeos() {
     echo "Using fixed recovery image:"
     echo "$RECOVERY_URL"
@@ -131,7 +131,15 @@ build_chromos_img() {
         exit 1
     }
 
+    # 1. Run the deployment setup first so the file is created and populated
     ${with_sudo}bash chromeos-install.sh -src chromeos.bin -dst "$CHROMEOS_IMG_FILENAME"
+
+    # 2. Force the cloud runner kernel to recognize the freshly built partition tree tables
+    sudo kpartx -av "$CHROMEOS_IMG_FILENAME"
+    sudo udevadm settle
+
+    # 3. Safely release the mapped block paths so GitHub Actions can zip the asset up cleanly
+    sudo kpartx -dv "$CHROMEOS_IMG_FILENAME"
 
     if [ -f "$CHROMEOS_IMG_FILENAME" ]; then
         echo "✅ $CHROMEOS_IMG_FILENAME created successfully"
@@ -156,4 +164,3 @@ clean_previous_run \
 && download_brunch \
 && post_download_setup \
 && build_chromos_img
-``
