@@ -48,7 +48,7 @@ jobs:
           chmod +x build.sh
 
           # Universal base recovery path
-          export RECOVERY_URL="https://google.com"
+          export RECOVERY_URL="https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16640.61.0_volteer_recovery_stable-channel_VolteerMPKeys-v14.bin.zip"
 
           # Execute build script under superuser context to write deep nested sectors
           sudo -E ./build.sh ${{ inputs.codename }}
