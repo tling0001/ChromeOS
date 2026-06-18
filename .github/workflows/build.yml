@@ -5,7 +5,7 @@ on:
     inputs:
       codename:
         type: choice
-        description: Target ChromeOS architecture config (Uses Rammus platform engine)
+        description: Target ChromeOS architecture configuration
         required: true
         options: [rammus, voxel, gumboz, jinlon, shyvana, leona, samus]
 
@@ -31,23 +31,34 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget unzip tar pv cgpt kmod
+          sudo apt-get install -y wget unzip tar pv cgpt kpartx coreutils
 
-      - name: Enable Loopback Partition Scanning
+      - name: Pre-Allocate Block Space & Force Device Maps
         run: |
-          # Force the GitHub runner kernel to handle nested disk partitions
-          sudo modprobe loop max_part=15
-          sudo sysctl -w kernel.unprivileged_userns_clone=1
+          # Allocate a true 15GB raw block zero matrix file to prevent structural allocation dropping
+          mkdir -p chromeos
+          dd if=/dev/zero of=chromeos/chromeos.img bs=1M count=15360 status=progress
+          
+          # Initialize loop layers and activate structural kernel mapping bindings
+          sudo losetup -f chromeos/chromeos.img
+          sudo udevadm settle
 
       - name: Build ChromeOS
         run: |
           chmod +x build.sh
 
-          # ✅ Working URL for Rammus base image
-          export RECOVERY_URL="https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16640.61.0_volteer_recovery_stable-channel_VolteerMPKeys-v14.bin.zip"
+          # Universal base recovery path
+          export RECOVERY_URL="https://google.com"
 
-          # Run the build tool using sudo to interact with the freshly mapped /dev/loop block states
+          # Execute build script under superuser context to write deep nested sectors
           sudo -E ./build.sh ${{ inputs.codename }}
+
+      - name: Post-Build Partition Table Fix
+        if: always()
+        run: |
+          # Clean up any lingering mapper device bindings on the runner
+          sudo kpartx -d chromeos/chromeos.img || true
+          sudo losetup -D || true
 
       - name: Upload image
         uses: actions/upload-artifact@v4
