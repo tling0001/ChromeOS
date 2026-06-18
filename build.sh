@@ -10,9 +10,9 @@ fi
 # ✅ Hardcoded ChromeOS recovery image (Rammus Master Platform)
 RECOVERY_URL="${RECOVERY_URL:-https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16640.61.0_rammus_recovery_stable-channel_RammusMPKeys-v9.bin.zip}"
 
-# Function to install required dependencies (Added kpartx here)
+# Function to install required dependencies
 install_dependencies() {
-    ${with_sudo}apt-get update && ${with_sudo}apt-get -y install pv cgpt tar unzip aria2 curl kpartx
+    ${with_sudo}apt-get update && ${with_sudo}apt-get -y install pv cgpt tar unzip aria2 curl coreutils
 }
 
 # clean folder brunch and chromeos if they exist
@@ -122,27 +122,32 @@ build_chromos_img() {
         exit 1
     }
 
-    [ -f chromeos.img ] && rm -f chromeos.img
-
     CHROMEOS_IMG_FILENAME=${CHROMEOS_IMG_FILENAME:-"chromeos.img"}
-
     [[ "$CHROMEOS_IMG_FILENAME" != *.img ]] && {
         echo "CHROMEOS_IMG_FILENAME must end with .img"
         exit 1
     }
 
-    # 1. Run the deployment setup first so the file is created and populated
-    ${with_sudo}bash chromeos-install.sh -src chromeos.bin -dst "$CHROMEOS_IMG_FILENAME"
+    [ -f "$CHROMEOS_IMG_FILENAME" ] && rm -f "$CHROMEOS_IMG_FILENAME"
 
-    # 2. Force the cloud runner kernel to recognize the freshly built partition tree tables
-    sudo kpartx -av "$CHROMEOS_IMG_FILENAME"
+    echo "Pre-allocating a true physical 15GB raw block file matrix..."
+    dd if=/dev/zero of="$CHROMEOS_IMG_FILENAME" bs=1M count=15360 status=progress
+
+    echo "Finding an available loop device and attaching with partition scanning..."
+    LOOP_DEV=$(sudo losetup -f)
+    sudo losetup --partscan "$LOOP_DEV" "$CHROMEOS_IMG_FILENAME"
     sudo udevadm settle
 
-    # 3. Safely release the mapped block paths so GitHub Actions can zip the asset up cleanly
-    sudo kpartx -dv "$CHROMEOS_IMG_FILENAME"
+    echo "Executing deployment setup directly into loop node path: $LOOP_DEV"
+    # Target the mapped loop device instead of the blank file to force proper extraction
+    ${with_sudo}bash chromeos-install.sh -src chromeos.bin -dst "$LOOP_DEV"
+
+    echo "Releasing block memory maps from cloud runner..."
+    sudo udevadm settle
+    sudo losetup -d "$LOOP_DEV"
 
     if [ -f "$CHROMEOS_IMG_FILENAME" ]; then
-        echo "✅ $CHROMEOS_IMG_FILENAME created successfully"
+        echo "✅ $CHROMEOS_IMG_FILENAME created successfully with valid data sectors!"
     else
         echo "❌ Failed to create $CHROMEOS_IMG_FILENAME"
         exit 1
