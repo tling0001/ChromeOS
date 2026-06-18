@@ -8,7 +8,7 @@ else
 fi
 
 # ✅ Hardcoded ChromeOS recovery image
-RECOVERY_URL="${RECOVERY_URL:-https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16640.61.0_volteer_recovery_stable-channel_VolteerMPKeys-v14.bin.zip}"
+RECOVERY_URL="${RECOVERY_URL:-https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16640.61.0_rammus_recovery_stable-channel_RammusMPKeys-v9.bin.zip}"
 
 # Function to install required dependencies
 install_dependencies() {
