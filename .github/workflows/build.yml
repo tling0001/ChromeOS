@@ -38,7 +38,7 @@ jobs:
           chmod +x build.sh
 
           # ✅ Inject fixed recovery URL
-          export RECOVERY_URL="https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16610.57.0_volteer_recovery_stable-channel_VolteerMPKeys-v14.bin.zip"
+          export RECOVERY_URL="https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16640.61.0_rammus_recovery_stable-channel_RammusMPKeys-v9.bin.zip"
 
           ./build.sh ${{ inputs.codename }}
 
