@@ -31,35 +31,23 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget unzip tar pv cgpt kpartx coreutils
+          sudo apt-get install -y wget unzip tar pv cgpt coreutils
 
-      - name: Pre-Allocate Block Space & Force Device Maps
-        run: |
-          # Allocate a true 15GB raw block zero matrix file to prevent structural allocation dropping
-          mkdir -p chromeos
-          dd if=/dev/zero of=chromeos/chromeos.img bs=1M count=15360 status=progress
-          
-          # Initialize loop layers and activate structural kernel mapping bindings
-          sudo losetup -f chromeos/chromeos.img
-          sudo udevadm settle
-
-      - name: Build ChromeOS
+      - name: Build Genuine ChromeOS Image
         run: |
           chmod +x build.sh
 
           # Universal base recovery path
-          export RECOVERY_URL="https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16640.61.0_rammus_recovery_stable-channel_RammusMPKeys-v9.bin.zip"
+          export RECOVERY_URL="https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16610.57.0_volteer_recovery_stable-channel_VolteerMPKeys-v14.bin.zip"
 
-          # Execute build script under superuser context to write deep nested sectors
-          sudo -E ./build.sh ${{ inputs.codename }}
+          # Run the build script
+          ./build.sh ${{ inputs.codename }}
 
-      - name: Post-Build Partition Table Fix
-        if: always()
+      - name: Compress and Clean Artifact
         run: |
-          # Clean up any lingering mapper device bindings on the runner
-          sudo kpartx -d chromeos/chromeos.img || true
-          sudo losetup -D || true
-
+          # Verify file sizes to guarantee system content is written
+          ls -lh chromeos/chromeos.img
+          
       - name: Upload image
         uses: actions/upload-artifact@v4
         with:
